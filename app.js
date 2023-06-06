@@ -56,55 +56,47 @@ const reportSnakeToCamelCase = (newObject) => {
     totalDeaths: newObject.deaths,
   };
 };
-//Authenticate TokenAPI
-const authenticateToken = (request, response, next) => {
+
+function authenticateToken(request, response, next) {
   let jwtToken;
-  const authHeaders = request.headers["authorization"];
-
-  if (authHeaders !== undefined) {
-    jwtToken = authHeaders.split(" ")[1];
-
-    jwt.verify(jwtToken, "my_secret_message", async (error, payload) => {
+  const authHeader = request.headers["authorization"];
+  if (authHeader !== undefined) {
+    jwtToken = authHeader.split(" ")[1];
+  }
+  if (jwtToken === undefined) {
+    response.status(401);
+    response.send("Invalid JWT Token");
+  } else {
+    jwtToken.verify(jwtToken, "MY_SECRET_TOKEN", async (error, payload) => {
       if (error) {
-        respnse.status(401);
+        response.status(401);
         response.send("Invalid JWT Token");
       } else {
         next();
       }
     });
-  } else {
-    response.status(401);
-    response.send("Invalid JWT Token");
   }
-};
+}
 
-//User Login API
+//
 app.post("/login/", async (request, response) => {
   const { username, password } = request.body;
-
-  const getUserDetailsQuery = `
-    SELECT
-    *
-    FROM
-    user
-    WHERE
-    username = '${username}';`;
-
-  const dbUser = await db.get(getUserDetailsQuery);
-
-  if (dbUser === undefined) {
+  const selectUserQuery = `SELECT * FROM user WHERE username = ${username};`;
+  const databaseUser = await db.get(selectUserQuery);
+  if (databaseUser === undefined) {
     response.status(400);
-    response.send("Invalid user");
+    response.send("Invalid User");
   } else {
-    //checking password
-    const isPasswordCorrect = await bcrypt.compare(password, dbUser.password);
-
-    if (isPasswordCorrect) {
-      const payload = { username: username };
-
-      const jwtToken = jwt.sign(payload, "my_secret_message");
-
-      response.send(jwtToken);
+    const isPasswordMatched = await bcrypt.compare(
+      password,
+      databaseUser.password
+    );
+    if (isPasswordMatched) {
+      const payload = {
+        username: username,
+      };
+      const jwtToken = jwt.sign(payload, "MY_SECRET_TOKEN");
+      response.send({ jwtToken });
     } else {
       response.status(400);
       response.send("Invalid password");
@@ -140,14 +132,11 @@ app.get("/states/:stateId/", authenticateToken, async (request, response) => {
     WHERE 
     state_id = ${stateId};`;
 
-  try {
-    const state = await db.get(getStateQuery);
+  const states = await db.get(getStateQuery);
 
-    const stateResult = objectSnakeToCamel(state);
-    response.send(stateResult);
-  } catch (error) {
-    console.log(error.message);
-  }
+  const stateResult = objectSnakeToCamel(states);
+
+  response.send(stateResult);
 });
 
 //create district API3
@@ -284,27 +273,5 @@ app.get(
   }
 );
 
-//get district name API8
-app.get(
-  "/districts/:districtId/details/",
-  authenticateToken,
-  async (request, response) => {
-    const { districtId } = request.params;
-
-    const getDistrictNameQuery = `
-    SELECT
-    state_name 
-    FROM
-    state
-    INNER JOIN district
-    ON state.state_id = district.state_id
-    WHERE 
-        district.district_id = ${districtId};`;
-
-    const stateName = await db.get(getDistrictNameQuery);
-
-    response.send({ stateName: stateName.state_name });
-  }
-);
-
+//
 module.exports = app;
